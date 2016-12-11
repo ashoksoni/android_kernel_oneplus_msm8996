@@ -29,14 +29,6 @@
 
 #define DRV_NAME	"tri-state-key"
 
-/*
-	        KEY1(GPIO1)	KEY2(GPIO92)
-1�ź�4������	0	            1         | MUTE
-2�ź�5������	1	            1         | Do Not Disturb
-4�ź�3������	1	            0         | Normal
-
-*/
-
 #define KEYCODE_BASE 600
 #define TOTAL_KEYCODES 6
 
@@ -87,15 +79,15 @@ static void switch_dev_work(struct work_struct *work)
 	int mode;
 	mutex_lock(&sem);
 
-	if(!gpio_get_value(switch_data->key2_gpio))
+	if(!gpio_get_value(switch_data->key3_gpio))
 	{
 		mode = 3;	
-		keyCode = keyCode_slider_middle;
+		keyCode = keyCode_slider_bottom;
 	}
-	else if(!gpio_get_value(switch_data->key3_gpio))
+	else if(!gpio_get_value(switch_data->key2_gpio))
 	{
 		mode = 2;
-		keyCode = keyCode_slider_bottom;
+		keyCode = keyCode_slider_middle;
 	}
 	else if(!gpio_get_value(switch_data->key1_gpio))
 	{
