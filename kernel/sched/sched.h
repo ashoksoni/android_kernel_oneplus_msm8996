@@ -1110,9 +1110,6 @@ static const u32 prio_to_wmult[40] = {
 #else
 #define ENQUEUE_WAKING		0x00
 #endif
-#define ENQUEUE_REPLENISH	8
-
-#define DEQUEUE_SLEEP		1
 
 #define RETRY_TASK		((void *)-1UL)
 
