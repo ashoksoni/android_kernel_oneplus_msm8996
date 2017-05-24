@@ -1859,7 +1859,6 @@ static inline void irq_time_write_end(void)
 }
 
 static inline u64 irq_time_read(int cpu)
-{
 	return per_cpu(cpu_softirq_time, cpu) + per_cpu(cpu_hardirq_time, cpu);
 }
 #endif /* CONFIG_64BIT */
