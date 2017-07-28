@@ -37,6 +37,7 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <linux/proc_fs.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -94,6 +95,8 @@ struct fpc1020_data {
 	spinlock_t irq_lock;
 	struct completion irq_sent;
 };
+
+static struct fpc1020_data *fpc1020_g = NULL;
 
 static int fpc1020_request_named_gpio(struct fpc1020_data *fpc1020,
 		const char *label, int *gpio)
@@ -362,15 +365,26 @@ static ssize_t screen_state_get(struct device* device,
 
 static DEVICE_ATTR(screen_state, S_IRUSR , screen_state_get, NULL);
 
-static ssize_t proximity_state_set(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct fpc1020_data *fpc1020 = dev_get_drvdata(dev);
-	int rc, val;
+static struct attribute *attributes[] = {
+	&dev_attr_hw_reset.attr,
+	&dev_attr_irq.attr,
+	&dev_attr_report_home.attr,
+	&dev_attr_screen_state.attr,
 
-	rc = kstrtoint(buf, 10, &val);
-	if (rc)
-		return -EINVAL;
+	NULL
+};
+
+static const struct attribute_group attribute_group = {
+	.attrs = attributes,
+};
+
+static ssize_t disable_write(struct file *file, const char __user *buf,
+	size_t count, loff_t *lo)
+{
+	struct fpc1020_data *fpc1020 = fpc1020_g;
+	int val;
+
+	sscanf(buf, "%d", &val);
 
 	fpc1020->proximity_state = !!val;
 
@@ -380,19 +394,10 @@ static ssize_t proximity_state_set(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(proximity_state, S_IWUSR, NULL, proximity_state_set);
-
-static struct attribute *attributes[] = {
-	&dev_attr_hw_reset.attr,
-	&dev_attr_irq.attr,
-	&dev_attr_report_home.attr,
-	&dev_attr_screen_state.attr,
-	&dev_attr_proximity_state.attr,
-	NULL
-};
-
-static const struct attribute_group attribute_group = {
-	.attrs = attributes,
+static const struct file_operations proc_disable = {
+	.write = disable_write,
+	.open = simple_open,
+	.owner = THIS_MODULE,
 };
 
 int fpc1020_input_init(struct fpc1020_data *fpc1020)
@@ -530,6 +535,8 @@ static int fpc1020_probe(struct platform_device *pdev)
 	unsigned long irqf;
 	struct device_node *np = dev->of_node;
 
+	struct proc_dir_entry *procdir;
+
 	struct fpc1020_data *fpc1020 = devm_kzalloc(dev, sizeof(*fpc1020),
 			GFP_KERNEL);
 	if (!fpc1020) {
@@ -540,6 +547,8 @@ static int fpc1020_probe(struct platform_device *pdev)
 	}
 
 	printk(KERN_INFO "%s\n", __func__);
+
+	fpc1020_g = fpc1020;
 
 	fpc1020->dev = dev;
 	dev_set_drvdata(dev, fpc1020);
@@ -662,6 +671,12 @@ static int fpc1020_probe(struct platform_device *pdev)
 	gpio_set_value(fpc1020->rst_gpio, 1);
 	udelay(FPC1020_RESET_HIGH2_US);
     #endif
+
+	// init procfs
+	procdir = proc_mkdir("fingerprint", NULL);
+
+	proc_create_data("disable", S_IWUSR, procdir,
+		&proc_disable, NULL);
 
 	dev_info(dev, "%s: ok\n", __func__);
 exit:
