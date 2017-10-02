@@ -12,7 +12,6 @@
 #include <linux/input.h>
 #include <linux/ioport.h>
 #include <linux/platform_device.h>
-#include <linux/proc_fs.h>
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
 #include <linux/of_platform.h>
@@ -44,15 +43,11 @@ typedef enum {
 	MODE_MAX_NUM
 } tri_mode_t;
 
-#define MODE_TOTAL_SILENCE 600
-#define MODE_ALARMS_ONLY 601
-#define MODE_PRIORITY_ONLY 602
-#define MODE_NONE 603
+#define KEY_SLIDER_TOP      601
+#define KEY_SLIDER_MIDDLE   602
+#define KEY_SLIDER_BOTTOM   603
 
-static int current_mode = 0;
-static int keyCode_slider_top = MODE_ALARMS_ONLY;
-static int keyCode_slider_middle = MODE_PRIORITY_ONLY;
-static int keyCode_slider_bottom = MODE_NONE;
+static int current_mode = MODE_UNKNOWN;
 
 struct switch_dev_data {
 	//tri_mode_t last_type;
@@ -99,17 +94,17 @@ static void switch_dev_work(struct work_struct *work)
 	if(!gpio_get_value(switch_data->key2_gpio))
 	{
 		mode = MODE_DO_NOT_DISTURB;
-		keyCode = keyCode_slider_middle;
+		keyCode = KEY_SLIDER_MIDDLE;
 	}
 	else if(!gpio_get_value(switch_data->key3_gpio))
 	{
 		mode = MODE_NORMAL;
-		keyCode = keyCode_slider_bottom;
+		keyCode = KEY_SLIDER_BOTTOM;
 	}
 	else if(!gpio_get_value(switch_data->key1_gpio))
 	{
 		mode = MODE_MUTE;
-		keyCode = keyCode_slider_top;
+		keyCode = KEY_SLIDER_TOP;
 	}
         if (current_mode != mode) {
 		current_mode = mode;
@@ -301,142 +296,9 @@ err:
 
 */
 
-static int keyCode_top_show(struct seq_file *seq, void *offset)
-{
-    seq_printf(seq, "%d\n", keyCode_slider_top);
-    return 0;
-}
-
-static ssize_t keyCode_top_write(struct file *file, const char __user *page, size_t t, loff_t *lo)
-{
-	int data;
-	char buf[10];
-
-	if (copy_from_user(buf, page, t))
-	{
-		dev_err(switch_data->dev, "read proc input error.\n");
-		return t;
-	}
-
-	if (sscanf(buf, "%d", &data) != 1)
-		return t;
-	if (data < 600 || data > 603)
-		return t;
-
-	keyCode_slider_top = data;
-	if (current_mode == 1)
-		send_input(keyCode_slider_top);
-
-	return t;
-}
-
-static int keyCode_top_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, keyCode_top_show, inode->i_private);
-}
-
-const struct file_operations proc_keyCode_top =
-{
-	.owner		= THIS_MODULE,
-	.open		= keyCode_top_open,
-	.read		= seq_read,
-	.write		= keyCode_top_write,
-	.llseek 	= seq_lseek,
-	.release	= single_release,
-};
-
-static int keyCode_middle_show(struct seq_file *seq, void *offset)
-{
-    seq_printf(seq, "%d\n", keyCode_slider_middle);
-    return 0;
-}
-
-static ssize_t keyCode_middle_write(struct file *file, const char __user *page, size_t t, loff_t *lo)
-{
-	int data;
-	char buf[10];
-
-	if (copy_from_user(buf, page, t))
-	{
-		dev_err(switch_data->dev, "read proc input error.\n");
-		return t;
-	}
-
-	if (sscanf(buf, "%d", &data) != 1)
-		return t;
-	if (data < 600 || data > 603)
-		return t;
-
-	keyCode_slider_middle = data;
-	if (current_mode == 2)
-		send_input(keyCode_slider_middle);
-
-	return t;
-}
-
-static int keyCode_middle_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, keyCode_middle_show, inode->i_private);
-}
-
-const struct file_operations proc_keyCode_middle =
-{
-	.owner		= THIS_MODULE,
-	.open		= keyCode_middle_open,
-	.read		= seq_read,
-	.write		= keyCode_middle_write,
-	.llseek 	= seq_lseek,
-	.release	= single_release,
-};
-
-static int keyCode_bottom_show(struct seq_file *seq, void *offset)
-{
-    seq_printf(seq, "%d\n", keyCode_slider_bottom);
-    return 0;
-}
-
-static ssize_t keyCode_bottom_write(struct file *file, const char __user *page, size_t t, loff_t *lo)
-{
-	int data;
-	char buf[10];
-
-	if (copy_from_user(buf, page, t))
-	{
-		dev_err(switch_data->dev, "read proc input error.\n");
-		return t;
-	}
-
-	if (sscanf(buf, "%d", &data) != 1)
-		return t;
-	if (data < 600 || data > 603)
-		return t;
-
-	keyCode_slider_bottom = data;
-	if (current_mode == 3)
-		send_input(keyCode_slider_bottom);
-
-	return t;
-}
-
-static int keyCode_bottom_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, keyCode_bottom_show, inode->i_private);
-}
-
-const struct file_operations proc_keyCode_bottom =
-{
-	.owner		= THIS_MODULE,
-	.open		= keyCode_bottom_open,
-	.read		= seq_read,
-	.write		= keyCode_bottom_write,
-	.llseek 	= seq_lseek,
-	.release	= single_release,
-};
-
 static int tristate_dev_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct proc_dir_entry *procdir;
 	int error=0;
 
 	//void __iomem *cfg_reg;
@@ -449,10 +311,9 @@ static int tristate_dev_probe(struct platform_device *pdev)
 	switch_data->input->name = DRV_NAME;
 	switch_data->input->dev.parent = &pdev->dev;
 	set_bit(EV_KEY, switch_data->input->evbit);
-	set_bit(MODE_TOTAL_SILENCE, switch_data->input->keybit);
-	set_bit(MODE_ALARMS_ONLY, switch_data->input->keybit);
-	set_bit(MODE_PRIORITY_ONLY, switch_data->input->keybit);
-	set_bit(MODE_NONE, switch_data->input->keybit);
+	set_bit(KEY_SLIDER_TOP, switch_data->input->keybit);
+	set_bit(KEY_SLIDER_MIDDLE, switch_data->input->keybit);
+	set_bit(KEY_SLIDER_BOTTOM, switch_data->input->keybit);
 	input_set_drvdata(switch_data->input, switch_data);
 	error = input_register_device(switch_data->input);
 	if (error) {
@@ -610,11 +471,6 @@ static int tristate_dev_probe(struct platform_device *pdev)
 		 //set_gpio_by_pinctrl();
         //report the first switch
         //switch_dev_work(&switch_data->work);
-
-	procdir = proc_mkdir("tri-state-key", NULL);
-	proc_create_data("keyCode_top", 0666, procdir, &proc_keyCode_top, NULL);
-	proc_create_data("keyCode_middle", 0666, procdir, &proc_keyCode_middle, NULL);
-	proc_create_data("keyCode_bottom", 0666, procdir, &proc_keyCode_bottom, NULL);
 
         return 0;
 
